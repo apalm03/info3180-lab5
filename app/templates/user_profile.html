@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block main %}
+    {% include 'flash_messages.html' %}
+
+    <div class="userBox" >
+    <div class="left">
+    <img class"userimage" src="{{ url_for('static', filename = 'uploads/' + user.image) }}" />
+    <div class="user_info">
+        <ul style="list-style: none;">
+        <li><h2>{{ user.first_name }} {{ user.last_name}}</h2></li>
+        <li><i class="fa fa-envelope-o"></i> <span class = "data">{{ user.email }}</span></li>
+        <li><i class="fa fa-map-marker"></i> <span class = "data">{{  user.location }}</span></li>
+        <li><i class="fa fa-calendar-o"></i> <span class = "data">{{ "Joined on" }} {{ user.created_on }}</span></li>
+        </ul>
+    </div>
+    </div>
+    
+    <div class= "about">
+        <p>
+        <h4>{{ "About Me" }}</h4>
+        </p>
+        <p>
+            {{user.bio}}
+        </p>
+        </div>
+        
+        <div class="buttons">   
+        <center>
+        <ul style="list-style: none;">
+        <li><button id="msg_btn">Send Message</button>  <button id="follow_btn">Follow</button></li>
+        </ul>
+        </center>
+        </div> 
+</div>
+
+{% endblock %}

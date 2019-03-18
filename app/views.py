@@ -5,16 +5,25 @@ Werkzeug Documentation:  http://werkzeug.pocoo.org/documentation/
 This file creates your application.
 """
 
-from app import app, db, login_manager
-from flask import render_template, request, redirect, url_for, flash
-from flask_login import login_user, logout_user, current_user, login_required
-from app.forms import LoginForm
+from app import app, db
+from flask import render_template, request, redirect, url_for, flash, jsonify
 from app.models import UserProfile
-from werkzeug.security import check_password_hash
+from app.forms import UserProfileForm
+from werkzeug.utils import secure_filename
+import time 
+import datetime
+import os
+
+
 
 ###
 # Routing for your application.
 ###
+
+def format_date_joined():
+    """returns the date in the format Month, Year (for example Feb, 2018)"""
+    return datetime.date.today().strftime("%b, %d,%Y")
+
 
 @app.route('/')
 def home():
@@ -25,68 +34,98 @@ def home():
 @app.route('/about/')
 def about():
     """Render the website's about page."""
-    return render_template('about.html')
+    return render_template('about.html', name = "Aaron Myrie")
+
     
+@app.route('/profile', methods=["GET", "POST"])
+def profile():
+    userProfileForm = UserProfileForm()
     
-@app.route('/secure-page')
-@login_required
-def secure_page():
-    """Render a secure page on website that only logged in users can access."""
-    return render_template('secure_page.html')
-
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
+    if request.method == "POST" and userProfileForm.validate_on_submit():
+        firstname = userProfileForm.fname.data
+        lastname = userProfileForm.lname.data
+        gender = userProfileForm.gender.data
+        email = userProfileForm.email.data
+        location = userProfileForm.location.data
+        bio = userProfileForm.bio.data
+        made_on = format_date_joined()
+        photo = userProfileForm.photo.data
+        image = secure_filename(photo.filename)
+        photo.save(os.path.join(app.config['UPLOAD_FOLDER'], image))
+        user = UserProfile(first_name = firstname, last_name = lastname, gender = gender, email = email, location = location, bio = bio, image = image, created_on = made_on)
+        db.session.add(user)
+        db.session.commit()
+                
+        flash("Profile was successfully added", "success")
+        return redirect(url_for("profiles"))
+    flash_errors(userProfileForm)
+    return render_template("profile.html", userProfileForm = userProfileForm)
     
+@app.route('/profiles')
+def profiles():
+    pic_names= get_uploaded_photos()
+    users = db.session.query(UserProfile).all()
+    
+    if request.method == 'GET':
+        return render_template('profiles.html', users = users, pic_names= pic_names)
+    elif request.method == "POST" and request.headers['Content-Type'] == "application/json":
+        users_lst = []
+        for user in users:
+            users_lst += [{"userid":user.get_id, "firstname": user.first_name,"lastname": user.last_name, "gender": user.gender, "location":user.location}]
+        json_user = {"users":users_lst}
+        return jsonify(json_user)
+    else:
+        flash('No user was found', 'danger')
+        return redirect(url_for('home'))
+    
+ 
+@app.route('/profile/<userid>')
+def userProfile(userid):
+    user = UserProfile.query.filter_by(id=userid).first()
+    pic_names= get_uploaded_photos()
+    
+    if request.method=='GET':
+        return render_template('user_profile.html', user =user, pic_names=pic_names)
+    elif request.method == "POST" and request.headers['Content-Type'] == "application/json":
+        json_user = {}
+        json_user["userid"] = user.id
+        json_user["username"] = user.first_name + user.last_name
+        json_user["email"] = user.email
+        json_user["location"] = user.location
+        json_user["bio"] = user.bio
+        json_user["profile_created_on"] = user.created_on
+        json_user["image"] = user.id + '.jpg'
+        return jsonify(json_user)
+    return render_template('user_profile.html', user=user, pic_names=pic_names)
+    
+ 
 
-
-        
-    form = LoginForm()
-    if request.method == "POST" and form.validate_on_submit():
-     
-        if form.username.data:
-            username = form.username.data
-            password = form.password.data
-            user = UserProfile.query.filter_by(username=username, password=password).first()
-           
-           
-            if user is not None and check_password_hash(user.password, password):
-                remember_me = False
+def get_uploaded_photos():
+    
+    #Get contents of Current working directory
+    rootdir = os.getcwd()
+    print (rootdir)
+    filenames = []
             
-                if 'remember_me' in request.form:
-                    remember_me = True
-   
-      
-            login_user(user)
-
-            # remember to flash a message to the user
-             # remember to flash a message to the user
-            flash('Logged in successfully.', 'success')
-            return redirect(url_for("secure_page")) 
-        else:
-            flash('Username or Password is incorrect.', 'danger')
-    
-    return render_template("login.html", form=form)
-    
-@app.route("/logout")
-@login_required
-def logout():
-    # Logout the user and end the session
-    logout_user()
-    flash('You have been logged out.', 'danger')
-    return redirect(url_for('home'))
-    
-
-
-# user_loader callback. This callback is used to reload the user object from
-# the user ID stored in the session
-@login_manager.user_loader
-def load_user(id):
-    return UserProfile.query.get(int(id))
+    #Traversing root directory recursively
+    for subdir, dirs, files in os.walk(rootdir + '/app/static/uploads'):
+	    for file in files:
+	        filenames.append(os.path.join(subdir, file).split('/')[-1])
+    return filenames
 
 ###
 # The functions below should be applicable to all Flask apps.
 ###
+
+
+# Flash errors from the form if validation fails
+def flash_errors(form):
+    for field, errors in form.errors.items():
+        for error in errors:
+            flash(u"Error in the %s field - %s" % (
+                getattr(form, field).label.text,
+                error
+), 'danger')
 
 
 @app.route('/<file_name>.txt')
